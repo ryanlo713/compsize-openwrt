@@ -26,4 +26,5 @@ zig.url.windows-x86_64  = https://ziglang.org/download/0.15.1/zig-x86_64-windows
 #   Later releases move the headers into libbtrfs/ and trim them; compsize no longer compiles against
 #   them (missing gfp_t / errno / ENOTTY definitions), so the pin is kept at the last version whose
 #   header layout compsize supports.  Bumping it requires patching compsize.
-#   The version also matches the btrfs-progs release shipped by OpenWrt (btrfs-progs 5.11-1).
+#   Note: the device-side btrfs-progs version does not affect compsize at run time - it issues the
+#   ioctl directly and links no library - so this pin is purely about what compsize can be built with.
