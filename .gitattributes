@@ -1,0 +1,8 @@
+# Normalise line endings: CI runs on Linux, and CRLF breaks sh scripts and some tooling
+* text=auto eol=lf
+*.sh   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.tsv  text eol=lf
+*.lock text eol=lf
+*.md   text eol=lf

@@ -1,0 +1,74 @@
+name: sdk-static
+
+# Build with the official OpenWrt SDK toolchain.
+# This provides a second, independent build of the aarch64_cortex-a53 target (cross-checking the
+# zig-based build) and is the fallback path for architecture-specific ABIs.
+#
+# The SDK filename is resolved from the OpenWrt download directory, so no name needs to be pinned here.
+# Outputs are named compsize-<arch>-sdk<release> to distinguish them from the main artifacts.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'OpenWrt release (e.g. 21.02.7 / 23.05.5 / 24.10.0)'
+        default: '21.02.7'
+      target:
+        description: 'target/subtarget (e.g. mediatek/mt7622, mediatek/filogic)'
+        default: 'mediatek/mt7622'
+      arch:
+        description: 'OpenWrt architecture used for the artifact name'
+        default: 'aarch64_cortex-a53'
+
+permissions:
+  contents: write
+
+jobs:
+  sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve and download the SDK (filename resolved from the download directory)
+        run: |
+          set -euo pipefail
+          BASE="https://downloads.openwrt.org/releases/${{ inputs.release }}/targets/${{ inputs.target }}"
+          NAME=$(curl -fsSL "$BASE/" | grep -o 'openwrt-sdk-[^"<>]*Linux-x86_64\.tar\.xz' | head -1)
+          echo "SDK = $NAME"
+          curl -fsSL -o sdk.tar.xz "$BASE/$NAME"
+          mkdir -p "$RUNNER_TEMP/sdk"
+          tar -xJf sdk.tar.xz -C "$RUNNER_TEMP/sdk" --strip-components=1
+          ls "$RUNNER_TEMP/sdk" | head
+
+      - name: Fetch btrfs headers and the upstream source
+        env:
+          ONLY: __fetch__
+        run: |
+          set -eux
+          sh ./build/fetch-headers.sh
+          sh ./build/build-static.sh     # ONLY matches no target: this clones the source and compiles nothing
+
+      - name: Compile with the SDK toolchain (static)
+        run: |
+          set -euo pipefail
+          SDK="$RUNNER_TEMP/sdk"
+          TC=$(ls -d "$SDK"/staging_dir/toolchain-* | head -1)
+          CC=$(ls "$TC"/bin/*-openwrt-linux-musl-gcc | head -1)
+          echo "TOOLCHAIN = $TC"
+          echo "CC        = $CC"
+          OUT="build/out/compsize-${{ inputs.arch }}-sdk${{ inputs.release }}"
+          mkdir -p build/out
+          "$CC" -O2 -std=gnu90 -static -Ihdr \
+              build/work/compsize/compsize.c build/work/compsize/radix-tree.c \
+              -o "$OUT"
+          file "$OUT"
+          readelf -h "$OUT" | sed -n '1,12p'
+          if readelf -d "$OUT" 2>/dev/null | grep -q NEEDED; then
+            echo "!! expected a static binary but found NEEDED entries" >&2; exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: compsize-${{ inputs.arch }}-sdk${{ inputs.release }}
+          path: build/out/compsize-${{ inputs.arch }}-sdk${{ inputs.release }}
+          if-no-files-found: error

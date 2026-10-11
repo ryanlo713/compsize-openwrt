@@ -1,0 +1,8 @@
+build/out/
+build/work/
+hdr/
+*.o
+*.ipk
+*.apk
+zig.tar.xz
+sdk.tar.xz

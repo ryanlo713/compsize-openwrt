@@ -1,0 +1,33 @@
+# Notice
+
+OpenWrt packaging and prebuilt releases for [`kilobyte/compsize`](https://github.com/kilobyte/compsize).
+
+## Copyright
+
+* **The `compsize` program** — Copyright (C) Adam Borowski and contributors.
+  Licensed under the GNU General Public License, version 2 or later (GPL-2.0-or-later).
+* **The packaging, build scripts and documentation** in this repository —
+  Copyright (C) compsize-openwrt contributors. Licensed under GPL-2.0-or-later.
+
+## Corresponding source
+
+Every release is compiled from the revisions pinned in [`upstream.lock`](upstream.lock):
+
+| Component | Revision |
+| :--- | :--- |
+| compsize | commit `d79eacf77abe3b799387bb8a4e07a18f1f1031e8` |
+| btrfs-progs (headers, build time only) | tag `v5.11` (commit `3ea5d6584c495d17868487a2f66b26a482bc9402`) |
+
+The complete corresponding source for any release therefore consists of:
+
+1. the upstream `compsize` source at the pinned commit, and
+2. this repository, which contains the build scripts, the packaging steps and the exact
+   compiler invocation (`build/build-static.sh`, `build/make-ipk.sh`, `build/make-apk.sh`).
+
+## Third-party components
+
+See [`THIRD-PARTY.md`](THIRD-PARTY.md).
+
+## License text
+
+The full GNU General Public License version 2 is in [`LICENSE`](LICENSE).

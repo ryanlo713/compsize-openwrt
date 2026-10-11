@@ -1,0 +1,48 @@
+name: mirror-toolchain
+
+# Mirror the pinned zig toolchain into a release asset of this repository (run once).
+# It complements the actions/cache step in build.yml, so that most builds download nothing and
+# the remaining ones use GitHub's own bandwidth instead of the upstream download host.
+#
+# Acquisition order in build.yml:  actions/cache  ->  this mirror  ->  upstream host.
+#
+# Usage: run this workflow manually once from the Actions tab.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download zig from upstream (pinned, SHA256 verified) and publish it as a release asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          URL=$(sed -n 's/^zig\.url\.linux-x86_64[[:space:]]*=[[:space:]]*//p' upstream.lock | tr -d '\r')
+          SHA=$(sed -n 's/^zig\.sha256\.linux-x86_64[[:space:]]*=[[:space:]]*//p' upstream.lock | tr -d '\r')
+          VER=$(sed -n 's/^zig\.version[[:space:]]*=[[:space:]]*//p' upstream.lock | tr -d '\r')
+          NAME=$(basename "$URL")
+          echo ">> upstream: $URL"
+
+          curl -fsSL -o "$NAME" "$URL"
+          echo "$SHA  $NAME" | sha256sum -c -
+          ls -l "$NAME"
+
+          TAG="toolchain-zig-${VER}"
+          NOTES="Mirror of the zig ${VER} release tarball, used by this repository's CI.
+          sha256: ${SHA}
+          origin: ${URL}"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$NAME" --clobber
+          else
+            gh release create "$TAG" "$NAME" --title "zig ${VER} (mirror)" --notes "$NOTES"
+          fi
+          echo ">> mirror ready: release tag $TAG"

@@ -1,0 +1,209 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # Derive the build matrix from build/targets.tsv so the platform table lives in exactly one place
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      include: ${{ steps.gen.outputs.include }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: gen
+        name: Generate the build matrix from build/targets.tsv
+        run: |
+          python3 - >> "$GITHUB_OUTPUT" <<'PY'
+          import json
+          rows = []
+          for line in open('build/targets.tsv', encoding='utf-8'):
+              line = line.rstrip('\n')
+              if not line.strip() or line.lstrip().startswith('#'):
+                  continue
+              c = line.split('\t')
+              rows.append({
+                  "arch": c[0].strip(),
+                  "tier": c[1].strip(),
+                  "zig": c[2].strip(),
+                  "cflags": c[3].strip() if len(c) > 3 else "",
+              })
+          print("include=" + json.dumps(rows, separators=(',', ':')))
+          PY
+      - name: Show matrix
+        run: echo '${{ steps.gen.outputs.include }}'
+
+  build:
+    needs: matrix
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.matrix.outputs.include) }}
+    name: ${{ matrix.arch }} (${{ matrix.tier }})
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache the zig toolchain (keyed on upstream.lock, so a version bump invalidates it)
+        id: zcache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/zig
+          key: zig-${{ runner.os }}-${{ hashFiles('upstream.lock') }}
+
+      - name: Acquire zig (cache -> release mirror -> upstream host)
+        if: steps.zcache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          URL=$(sed -n 's/^zig\.url\.linux-x86_64[[:space:]]*=[[:space:]]*//p' upstream.lock | tr -d '\r')
+          SHA=$(sed -n 's/^zig\.sha256\.linux-x86_64[[:space:]]*=[[:space:]]*//p' upstream.lock | tr -d '\r')
+          VER=$(sed -n 's/^zig\.version[[:space:]]*=[[:space:]]*//p' upstream.lock | tr -d '\r')
+          # the mirror is produced by .github/workflows/mirror-toolchain.yml
+          MIRROR="https://github.com/${GITHUB_REPOSITORY}/releases/download/toolchain-zig-${VER}/$(basename "$URL")"
+          mkdir -p "$RUNNER_TEMP/zig"
+          ok=0
+          for u in "$MIRROR" "$URL"; do
+            echo ">> trying: $u"
+            if curl -fsSL -o "$RUNNER_TEMP/zig.tar.xz" "$u"; then ok=1; break; fi
+          done
+          [ "$ok" = 1 ] || { echo "!! toolchain download failed" >&2; exit 1; }
+          echo "$SHA  $RUNNER_TEMP/zig.tar.xz" | sha256sum -c -
+          tar -xJf "$RUNNER_TEMP/zig.tar.xz" -C "$RUNNER_TEMP/zig" --strip-components=1
+
+      - name: Add zig to PATH
+        run: echo "${{ runner.temp }}/zig" >> "$GITHUB_PATH"
+
+      - name: Cache upstream sources and btrfs headers
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/work
+            hdr
+          key: src-${{ hashFiles('upstream.lock') }}
+
+      - name: Fetch btrfs headers (pinned btrfs-progs tag; a no-op on cache hits)
+        run: sh ./build/fetch-headers.sh
+
+      - name: Compile (${{ matrix.arch }})
+        env:
+          ONLY: ${{ matrix.arch }}
+          ZIG: zig
+        run: sh ./build/build-static.sh
+
+      - name: Verify artifact (architecture, static linkage, no dynamic dependencies)
+        run: |
+          set -euo pipefail
+          BIN="build/out/compsize-${{ matrix.arch }}"
+          test -x "$BIN"
+          file "$BIN" || true
+          echo "--- ELF header ---";   readelf -h "$BIN" | sed -n '1,12p' || true
+          echo "--- dynamic deps ---"; readelf -d "$BIN" 2>&1 | head -5 || true
+          if readelf -d "$BIN" 2>/dev/null | grep -q NEEDED; then
+            echo "!! expected a static binary but found NEEDED entries" >&2; exit 1
+          fi
+          echo "OK: static ELF"
+
+      - name: Package .ipk (opkg; static binary, so no dependencies)
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          SHA7: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "${REF_TYPE}" = "tag" ]; then V="${REF_NAME#v}"; else V="0.0.0-dev+$(echo "$SHA7" | cut -c1-7)"; fi
+          PKGVER="$(echo "$V" | tr -c 'A-Za-z0-9._-' '_')-1"
+          sh build/make-ipk.sh "${{ matrix.arch }}" "$PKGVER" \
+              "build/out/compsize-${{ matrix.arch }}" build/out
+          cp "build/out/compsize_${PKGVER}_${{ matrix.arch }}.ipk" \
+             "build/out/compsize-${{ matrix.arch }}.ipk"    # stable alias used by install.sh
+          echo "PKGVER=$PKGVER" >> "$GITHUB_ENV"
+
+      - name: Package .apk (apk-tools v2; best effort, does not fail the build)
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          sh build/make-apk.sh "${{ matrix.arch }}" "${PKGVER}" \
+              "build/out/compsize-${{ matrix.arch }}" build/out
+          cp "build/out/compsize_${PKGVER}_${{ matrix.arch }}.apk" \
+             "build/out/compsize-${{ matrix.arch }}.apk" || true
+
+      - name: Validate the .ipk layout
+        run: |
+          set -euo pipefail
+          IPK="build/out/compsize-${{ matrix.arch }}.ipk"
+          tar -tzf "$IPK" | tee /tmp/ipk_members.txt
+          expected="./debian-binary
+./data.tar.gz
+./control.tar.gz"
+          if [ "$(cat /tmp/ipk_members.txt)" != "$expected" ]; then
+            echo "!! unexpected .ipk outer members" >&2; exit 1
+          fi
+          mkdir -p /tmp/ipk && cd /tmp/ipk
+          tar -xzf "$OLDPWD/$IPK" ./control.tar.gz ./data.tar.gz
+          echo "--- control ---"; tar -xzOf control.tar.gz ./control
+          echo "--- data ---";    tar -tzf data.tar.gz
+          if ! tar -tzf data.tar.gz | grep -qx './usr/bin/compsize'; then
+            echo "!! ./usr/bin/compsize missing from data.tar.gz" >&2; exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: compsize-${{ matrix.arch }}
+          path: |
+            build/out/compsize-${{ matrix.arch }}
+            build/out/compsize-${{ matrix.arch }}.ipk
+            build/out/compsize-${{ matrix.arch }}.apk
+          if-no-files-found: warn
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate install.sh with the repository baked in
+        run: |
+          set -euo pipefail
+          sed "s#@REPO@#${GITHUB_REPOSITORY}#g" install.sh > dist/install.sh
+          chmod 755 dist/install.sh
+          head -20 dist/install.sh
+
+      - name: Generate SHA256SUMS and BUILDINFO.txt
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum compsize-* > SHA256SUMS
+          {
+            echo "compsize for OpenWrt - build info"
+            echo "tag         : ${GITHUB_REF_NAME}"
+            echo "commit      : ${GITHUB_SHA}"
+            echo "built       : $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "zig         : $(sed -n 's/^zig\.version[[:space:]]*=[[:space:]]*//p' ../upstream.lock | tr -d '\r')"
+            echo "compsize    : $(sed -n 's/^compsize\.commit[[:space:]]*=[[:space:]]*//p' ../upstream.lock | tr -d '\r')"
+            echo "btrfs-progs : $(sed -n 's/^btrfsprogs\.tag[[:space:]]*=[[:space:]]*//p' ../upstream.lock | tr -d '\r')"
+            echo "cflags      : -O2 -std=gnu90 -static  (+ per-target -mcpu, see build/targets.tsv)"
+            echo
+            echo "files:"
+            ls -l compsize-*
+          } > BUILDINFO.txt
+          cat SHA256SUMS; echo; cat BUILDINFO.txt
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes

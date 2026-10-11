@@ -1,0 +1,26 @@
+# Pinned upstreams and dependencies.
+#
+# Read by the build scripts and by CI; change versions only here.
+# Format:  <key> = <value>            (# starts a comment)
+
+compsize.repo   = https://github.com/kilobyte/compsize
+compsize.commit = d79eacf77abe3b799387bb8a4e07a18f1f1031e8
+compsize.date   = 2023-12-23
+compsize.lic    = GPL-2.0-or-later
+
+btrfsprogs.repo = https://github.com/kdave/btrfs-progs
+btrfsprogs.tag  = v5.11
+btrfsprogs.commit = 3ea5d6584c495d17868487a2f66b26a482bc9402
+btrfsprogs.lic  = GPL-2.0  (kernel uapi parts: GPL-2.0 WITH Linux-syscall-note)
+
+# Cross toolchain (zig): a single toolchain covers every target, and its musl targets link statically.
+zig.version = 0.12.0
+zig.sha256.linux-x86_64 = c7ae866b8a76a568e2d5cfd31fe89cdb629bdd161fdd5018b29a4a0a17045cad
+zig.url.linux-x86_64    = https://ziglang.org/download/0.12.0/zig-linux-x86_64-0.12.0.tar.xz
+zig.url.windows-x86_64  = https://ziglang.org/download/0.12.0/zig-windows-x86_64-0.12.0.zip
+
+# Why the btrfs-progs v5.11 headers?
+#   compsize includes the btrfs userspace headers <btrfs/ioctl.h> and <btrfs/ctree.h>.
+#   btrfs-progs v5.11 defines libbtrfs_headers (including ioctl.h and kernel-shared/ctree.h) and its
+#   `make install` copies that set **flat** into $(incdir)/btrfs/; this project reproduces the layout.
+#   The version also matches the btrfs-progs release shipped by OpenWrt (btrfs-progs 5.11-1).
