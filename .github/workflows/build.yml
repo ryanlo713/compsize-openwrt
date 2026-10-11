@@ -140,8 +140,8 @@ jobs:
           IPK="build/out/compsize-${{ matrix.arch }}.ipk"
           tar -tzf "$IPK" | tee /tmp/ipk_members.txt
           expected="./debian-binary
-./data.tar.gz
-./control.tar.gz"
+          ./data.tar.gz
+          ./control.tar.gz"
           if [ "$(cat /tmp/ipk_members.txt)" != "$expected" ]; then
             echo "!! unexpected .ipk outer members" >&2; exit 1
           fi
