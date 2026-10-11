@@ -4,14 +4,16 @@
 #   tier: prime = first priority; common = widely used; extra = less common
 #   extra_cflags uses **zig cc syntax**: zig selects CPUs with -mcpu=<cpu> and does not accept
 #   GCC's -march=/-mfpu=.  The column may contain spaces, so it has to be last; empty = target default.
+#   The MIPS triples carry an explicit ABI suffix (musleabi = soft float, matching OpenWrt's
+#   mips*_24kc targets); zig does not provide libc for the bare mips-linux-musl triple.
 #   Note: the SDK workflow (sdk-static.yml) does not use these flags; it relies on the SDK toolchain.
 #
 aarch64_cortex-a53	prime	aarch64-linux-musl	-mcpu=cortex_a53
 arm_cortex-a7_neon-vfpv4	common	arm-linux-musleabihf	-mcpu=cortex_a7
 arm_cortex-a9	common	arm-linux-musleabihf	-mcpu=cortex_a9
 arm_cortex-a5	common	arm-linux-musleabi	-mcpu=cortex_a5
-mipsel_24kc	common	mipsel-linux-musl	
-mips_24kc	common	mips-linux-musl	
+mipsel_24kc	common	mipsel-linux-musleabi	
+mips_24kc	common	mips-linux-musleabi	
 x86_64	common	x86_64-linux-musl	
 i386_pentium4	common	x86-linux-musl	-mcpu=pentium4
 riscv64_generic	extra	riscv64-linux-musl	
