@@ -17,7 +17,7 @@ jobs:
     outputs:
       include: ${{ steps.gen.outputs.include }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: gen
         name: Generate the build matrix from build/targets.tsv
         run: |
@@ -49,11 +49,11 @@ jobs:
         include: ${{ fromJSON(needs.matrix.outputs.include) }}
     name: ${{ matrix.arch }} (${{ matrix.tier }})
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Cache the zig toolchain (keyed on upstream.lock, so a version bump invalidates it)
         id: zcache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/zig
           key: zig-${{ runner.os }}-${{ hashFiles('upstream.lock') }}
@@ -81,7 +81,7 @@ jobs:
         run: echo "${{ runner.temp }}/zig" >> "$GITHUB_PATH"
 
       - name: Cache upstream sources and btrfs headers
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             build/work
@@ -153,7 +153,7 @@ jobs:
             echo "!! ./usr/bin/compsize missing from data.tar.gz" >&2; exit 1
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: compsize-${{ matrix.arch }}
           path: |
@@ -167,8 +167,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true

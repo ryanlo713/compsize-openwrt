@@ -27,7 +27,7 @@ jobs:
   sdk:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Resolve and download the SDK (filename resolved from the download directory)
         run: |
@@ -67,7 +67,7 @@ jobs:
             echo "!! expected a static binary but found NEEDED entries" >&2; exit 1
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: compsize-${{ inputs.arch }}-sdk${{ inputs.release }}
           path: build/out/compsize-${{ inputs.arch }}-sdk${{ inputs.release }}

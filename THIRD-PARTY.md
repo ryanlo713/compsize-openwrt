@@ -28,7 +28,7 @@ obtained from btrfs-progs at build time and are **not redistributed** by this re
 | :--- | :--- |
 | Project | [ziglang.org](https://ziglang.org) |
 | License | MIT |
-| Pinned | 0.12.0, SHA256 verified (see [`upstream.lock`](upstream.lock)) |
+| Pinned | 0.15.1, SHA256 verified (see [`upstream.lock`](upstream.lock)) |
 | Role | cross-compiler for every target (`zig cc -target <triple>`) |
 
 ## Copyright and corresponding source
