@@ -90,29 +90,30 @@ trap 'rm -rf "$TMP"' EXIT INT HUP
 # ---------- 3) fetch and install ----------
 if [ "$MODE" = "ipk" ]; then
   command -v opkg >/dev/null 2>&1 || { echo "!! opkg not found (24.10 and later use apk); use the default binary mode" >&2; exit 1; }
-  ASSET="compsize_$ARCH.ipk"
+  ASSET="compsize-$ARCH.ipk"
   echo ">> downloading $BASE/$ASSET"
-  fetch "$BASE/$ASSET" "$TMP/compsize.ipk"
+  fetch "$BASE/$ASSET" "$TMP/$ASSET"        # keep the asset name: sha256sum -c expects it
   if fetch "$BASE/SHA256SUMS" "$TMP/SHA256SUMS" 2>/dev/null; then
-    ( cd "$TMP" && grep -F "$ASSET" SHA256SUMS | sed "s#$ASSET#compsize.ipk#" | sha256sum -c - ) \
+    ( cd "$TMP" && grep -E "[[:space:]]${ASSET}\$" SHA256SUMS | sha256sum -c - ) \
       || { echo "!! checksum mismatch" >&2; exit 1; }
+    echo ">> checksum OK"
   fi
-  opkg install "$TMP/compsize.ipk"
+  opkg install "$TMP/$ASSET"
   echo ">> installed via opkg.  Run:  compsize <btrfs-directory>"
   exit 0
 else
   ASSET="compsize-$ARCH"
   echo ">> downloading $BASE/$ASSET"
-  fetch "$BASE/$ASSET" "$TMP/compsize"
+  fetch "$BASE/$ASSET" "$TMP/$ASSET"        # keep the asset name: sha256sum -c expects it
   if fetch "$BASE/SHA256SUMS" "$TMP/SHA256SUMS" 2>/dev/null; then
-    ( cd "$TMP" && grep -F "$ASSET" SHA256SUMS | sha256sum -c - ) \
+    ( cd "$TMP" && grep -E "[[:space:]]${ASSET}\$" SHA256SUMS | sha256sum -c - ) \
       || { echo "!! checksum mismatch" >&2; exit 1; }
     echo ">> checksum OK"
   else
     echo ">> SHA256SUMS unavailable, skipping verification"
   fi
   mkdir -p "$DEST"
-  cp "$TMP/compsize" "$DEST/compsize"
+  cp "$TMP/$ASSET" "$DEST/compsize"
   chmod 755 "$DEST/compsize"
   echo ">> installed to $DEST/compsize"
   echo ">> try:   $DEST/compsize -h"
