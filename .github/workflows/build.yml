@@ -118,7 +118,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${REF_TYPE}" = "tag" ]; then V="${REF_NAME#v}"; else V="0.0.0-dev+$(echo "$SHA7" | cut -c1-7)"; fi
-          PKGVER="$(echo "$V" | tr -c 'A-Za-z0-9._-' '_')-1"
+          PKGVER="$(printf '%s' "$V" | tr -c 'A-Za-z0-9._-' '_')-1"   # printf: no trailing newline to translate
           sh build/make-ipk.sh "${{ matrix.arch }}" "$PKGVER" \
               "build/out/compsize-${{ matrix.arch }}" build/out
           cp "build/out/compsize_${PKGVER}_${{ matrix.arch }}.ipk" \
